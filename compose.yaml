@@ -6,19 +6,27 @@
 #   - crawler: the service in this repo, built from the local Dockerfile,
 #     constrained to the same resource envelope the platform enforces at
 #     grade time (CPU 0.2, memory 256 MiB).
+#   - sidecar: HTTP reverse proxy the platform also runs at grade time;
+#     records Prometheus metrics on every request it forwards. Your
+#     crawler doesn't need to expose /metrics — the sidecar does it for
+#     you, so the same observability surface works locally and in the
+#     grading vcluster.
+#   - prometheus / grafana: per-session observability stack. Open
+#     http://localhost:3000 (anonymous access in dev) for the "Crawler
+#     traffic" dashboard.
 #
 # Run:
 #   docker compose up --build
 #
-# Then in another shell, POST to the crawler with URLs that point at the
-# fixture's k8s-style hostname:
+# Then in another shell, POST to the crawler (via the sidecar) with URLs
+# that point at the fixture's hostname:
 #   curl -sX POST localhost:8080/crawl \
 #     -H 'content-type: application/json' \
 #     -d '{"urls":["http://fixture:9090/wiki/Python_(programming_language)"]}' | jq
 
 services:
   fixture:
-    image: ghcr.io/ltbringer/python_debugging_01-fixture:v0.1.0
+    image: ghcr.io/ltbringer/python_debugging_01-fixture:v0.3.0
     networks: [pd01]
     ports:
       - "9090:9090"   # browse /catalog from the host while iterating
@@ -26,8 +34,8 @@ services:
   crawler:
     build: .
     networks: [pd01]
-    ports:
-      - "8080:8080"
+    # No host port — the sidecar fronts the crawler. Internal-only.
+    expose: ["8080"]
     depends_on:
       - fixture
     # Match the platform's grade-time envelope. Comment these out for a
@@ -36,6 +44,48 @@ services:
     # for this envelope.
     mem_limit: 256m
     cpus: 0.2
+
+  sidecar:
+    image: ghcr.io/ltbringer/python_debugging_01-sidecar:v0.4.0
+    networks: [pd01]
+    ports:
+      - "8080:8080"   # crawler entry point (proxied)
+    environment:
+      UPSTREAM: http://crawler:8080
+      PORT: "8080"
+      METRICS_PORT: "9091"
+    depends_on:
+      - crawler
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    networks: [pd01]
+    ports:
+      - "9092:9090"   # browse PromQL at http://localhost:9092
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=1h
+    depends_on:
+      - sidecar
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    networks: [pd01]
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_LOG_LEVEL: warn
+    volumes:
+      - ./observability/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./observability/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
 
 networks:
   pd01: {}

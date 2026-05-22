@@ -75,17 +75,21 @@ The platform attaches an HTTP sidecar to your service and ships per-session Prom
 
 The local compose ships the same stack so you can iterate offline against the same dashboards you'll see during grading.
 
-(Slice 4 of M5 — the dashboard stack lands here as part of the course's first release. If you're reading this from a fork before that ships, the dashboard piece may be in flight.)
-
 ## Running locally
 
-The repo ships a `compose.yaml` that brings up your crawler alongside the same Wikipedia-shaped fixture the platform's grader uses (`ghcr.io/ltbringer/python_debugging_01-fixture`). The crawler runs under the same CPU and memory caps the platform enforces at grade time.
+The repo ships a `compose.yaml` that brings up five services on a shared network:
+
+- `fixture` — Wikipedia-shaped JSON fixture (`ghcr.io/ltbringer/python_debugging_01-fixture`).
+- `crawler` — your service, built from this repo. Capped at CPU 0.2 / mem 256Mi to match the platform's grade-time envelope.
+- `sidecar` — HTTP reverse proxy the platform also runs at grade time; emits Prometheus metrics on every request it forwards. Your crawler doesn't need to implement `/metrics` — the sidecar provides it.
+- `prometheus` — scrapes the sidecar every 5s; UI at <http://localhost:9092>.
+- `grafana` — `Crawler — traffic shape` dashboard pre-provisioned at <http://localhost:3000>. Anonymous Admin in dev, no login.
 
 ```bash
 docker compose up --build
 ```
 
-Then in another shell, POST to the crawler with URLs pointing at the fixture's compose-network hostname:
+`localhost:8080` is the sidecar; it forwards to the crawler internally. Open the dashboard before you start sending traffic, then in another shell POST to the crawler (via the sidecar) with URLs pointing at the fixture's compose-network hostname:
 
 ```bash
 curl -sX POST localhost:8080/crawl \
