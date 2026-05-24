@@ -1,0 +1,72 @@
+# vcluster chart values for hardmode session namespaces.
+# 1) No PVC — emptyDir backing store. Session is ephemeral.
+# 2) Pod/container SecurityContext meets PSA "restricted".
+# 3) Resource requests/limits sized for the platform envelope.
+# 4) RBAC stays namespace-only (no cluster-scope grants needed).
+
+rbac:
+  clusterRole:
+    enabled: false
+  enableVolumeSnapshotRules:
+    enabled: false
+
+controlPlane:
+  # Embedded sqlite via kine — no etcd, no PVC.
+  backingStore:
+    database:
+      embedded:
+        enabled: true
+
+  statefulSet:
+    # Override the auto-PVC default; vcluster uses the empty-dir we
+    # provide as its data dir.
+    persistence:
+      volumeClaim:
+        enabled: false
+      dataVolume:
+        - name: data
+          emptyDir: {}
+
+    # Fit the platform per-container max (500m/512Mi).
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+        ephemeral-storage: 200Mi
+      limits:
+        cpu: 400m
+        memory: 512Mi
+        ephemeral-storage: 1Gi
+
+    # PSA "restricted" compliance.
+    security:
+      podSecurityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containerSecurityContext:
+        allowPrivilegeEscalation: false
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        capabilities:
+          drop: [ALL]
+        seccompProfile:
+          type: RuntimeDefault
+
+  # The distro init container ("kubernetes") doesn't honor
+  # controlPlane.statefulSet.security; its securityContext lives here.
+  distro:
+    k8s:
+      securityContext:
+        allowPrivilegeEscalation: false
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        capabilities:
+          drop: [ALL]
+        seccompProfile:
+          type: RuntimeDefault

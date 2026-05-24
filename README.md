@@ -116,6 +116,43 @@ The service listens on `:8080`. The crawler is generic — it makes HTTP GETs an
 
 The happy path works. The defects only manifest under specific conditions. Debug from outcomes: send workloads, compute what the response should be, compare to what came back.
 
+## Running on the hardmode platform
+
+`hardmode session start python-debugging-01` gives you a kubeconfig scoped to a single host-cluster namespace. The platform's namespace caps fit a vcluster control plane + the M5 fixture / validator / sidecar / Prometheus / Grafana stack with headroom; the per-pod grade-time envelope (200m CPU / 256Mi) is enforced by the vcluster-internal LimitRange the validator sets up at grade time.
+
+Install vcluster with the values file from this repo. It's tuned for hardmode's host namespace (no PVC — sessions are ephemeral — and PodSecurity-restricted-compliant pod specs):
+
+```bash
+export KUBECONFIG=$(hardmode session status --output-json | jq -r .kubeconfig_path)
+NS=$(hardmode session status --output-json | jq -r .namespace)
+
+helm repo add loft-sh https://charts.loft.sh
+helm repo update loft-sh
+
+helm install vc loft-sh/vcluster \
+  --namespace "$NS" \
+  -f vcluster.values.yaml \
+  --wait --timeout 5m
+```
+
+The values file disables vcluster's persistent volume claim (etcd runs in an emptyDir — sessions live as long as the namespace and no farther), turns off cluster-scoped RBAC (the platform's per-session SA can't create ClusterRoles anyway), pins the control-plane container's resources inside the platform envelope, and sets a non-root pod + container `securityContext` so PSA's `restricted` profile is clean.
+
+To talk to the vcluster:
+
+```bash
+# In one terminal, port-forward vcluster's apiserver to your laptop.
+kubectl port-forward -n "$NS" svc/vc 8443:443
+
+# In another:
+kubectl get secret vc-certs -n "$NS" -o jsonpath='{.data.admin\.conf}' \
+  | base64 -d > vcluster.kubeconfig
+sed -i 's|server: https://.*|server: https://127.0.0.1:8443|' vcluster.kubeconfig
+export KUBECONFIG="$PWD/vcluster.kubeconfig"
+kubectl get nodes              # should report the LKE host node
+```
+
+Now you're talking to *your* vcluster apiserver. Deploy the crawler with whatever Deployment / Service shape you prefer (the validator only cares about the SLA endpoints, not Kubernetes object shape).
+
 ## Forking and submitting
 
 1. Fork this repo.
