@@ -38,7 +38,27 @@ controlPlane:
         memory: 512Mi
         ephemeral-storage: 1Gi
 
-    # PSA "restricted" compliance.
+    # PSA "restricted" compliance for the main syncer container + the
+    # pod's overall security posture. The distro init container's
+    # securityContext lives under controlPlane.distro.k8s.securityContext
+    # below — it's a separate field.
+    security:
+      podSecurityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containerSecurityContext:
+        allowPrivilegeEscalation: false
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        capabilities:
+          drop: [ALL]
+        seccompProfile:
+          type: RuntimeDefault
 
   # The distro init container ("kubernetes") doesn't honor
   # controlPlane.statefulSet.security; its securityContext lives here.
@@ -62,16 +82,8 @@ controlPlane:
       resources:
         requests: {cpu: 20m, memory: 64Mi}
         limits:   {cpu: 200m, memory: 170Mi}
-    security:
-      podSecurityContext:
-        runAsNonRoot: true
-        runAsUser: 65532
-        runAsGroup: 65532
-        seccompProfile: {type: RuntimeDefault}
-      containerSecurityContext:
-        allowPrivilegeEscalation: false
-        runAsNonRoot: true
-        runAsUser: 65532
-        runAsGroup: 65532
-        capabilities: {drop: [ALL]}
-        seccompProfile: {type: RuntimeDefault}
+    # Leave coredns securityContext at the chart default. The official
+    # /coredns binary won't exec as uid 65532 ("operation not
+    # permitted"); the default user is fine under PSA baseline.
+    # Tightening to restricted needs a coredns image that supports
+    # non-root.
