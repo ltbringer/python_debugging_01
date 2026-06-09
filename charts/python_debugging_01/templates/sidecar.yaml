@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sidecar
+  labels:
+    {{- include "pd01.labels" . | nindent 4 }}
+    app: sidecar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sidecar
+  template:
+    metadata:
+      labels:
+        app: sidecar
+      annotations:
+        # Picked up by the platform's Grafana Alloy (annotation autodiscovery);
+        # metrics are labelled with this pod's namespace (= the session) for
+        # the per-session dashboard. See the platform observability addon.
+        k8s.grafana.com/scrape: "true"
+        k8s.grafana.com/metrics.portNumber: {{ .Values.sidecar.metricsPort | quote }}
+    spec:
+      containers:
+        - name: sidecar
+          image: "{{ .Values.images.fixtures.sidecar.repository }}:{{ .Values.images.fixtures.sidecar.tag }}"
+          env:
+            - name: UPSTREAM
+              value: "http://crawler:{{ .Values.crawler.port }}"
+            - name: PORT
+              value: {{ .Values.sidecar.port | quote }}
+            - name: METRICS_PORT
+              value: {{ .Values.sidecar.metricsPort | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.sidecar.port }}
+            - name: metrics
+              containerPort: {{ .Values.sidecar.metricsPort }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sidecar
+  labels:
+    {{- include "pd01.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: sidecar
+  ports:
+    - name: http
+      port: {{ .Values.sidecar.port }}
+      targetPort: http

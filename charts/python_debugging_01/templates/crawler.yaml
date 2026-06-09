@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crawler
+  labels:
+    {{- include "pd01.labels" . | nindent 4 }}
+    app: crawler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crawler
+  template:
+    metadata:
+      labels:
+        app: crawler
+    spec:
+      containers:
+        - name: crawler
+          image: "{{ .Values.images.problems.crawler.repository }}:{{ .Values.images.problems.crawler.tag }}"
+          ports:
+            - name: http
+              containerPort: {{ .Values.crawler.port }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          resources:
+            {{- toYaml .Values.crawler.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crawler
+  labels:
+    {{- include "pd01.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: crawler
+  ports:
+    - name: http
+      port: {{ .Values.crawler.port }}
+      targetPort: http

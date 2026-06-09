@@ -1,0 +1,45 @@
+# Role-bucketed images.
+#
+#   images.problems.*  — the STUDENT's solution. Override these with your
+#                        locally-built image (e.g. --set
+#                        images.problems.crawler.tag=dev). This is what gets
+#                        graded.
+#   images.fixtures.*  — author-provided dependencies (the wikipedia fixture
+#                        and the metrics sidecar). Leave them as-is.
+images:
+  problems:
+    crawler:
+      repository: ghcr.io/h4rdm0d3/python_debugging_01
+      tag: v1.1.0
+  fixtures:
+    wikipedia:
+      repository: ghcr.io/ltbringer/python_debugging_01-fixture
+      tag: v0.3.0
+    sidecar:
+      repository: ghcr.io/ltbringer/python_debugging_01-sidecar
+      tag: v0.4.0
+
+# The crawler is the service you fix. Its resources are pinned to the
+# grade-time envelope the platform enforces; tuning the whole deployment's
+# footprint is part of the resource-cost optimization game.
+crawler:
+  port: 8080
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Author dependency: the wikipedia-shaped fixture the crawler calls.
+wikipedia:
+  port: 9090
+
+# Author dependency: the reverse-proxy sidecar. It is the published surface
+# the platform validator enters at (port 8080), forwards to the crawler, and
+# exposes Prometheus metrics on metricsPort — scraped by Grafana Alloy via the
+# k8s.grafana.com/scrape annotation, labelled by session namespace.
+sidecar:
+  port: 8080
+  metricsPort: 9091

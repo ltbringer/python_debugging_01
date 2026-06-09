@@ -1,0 +1,11 @@
+apiVersion: v2
+name: python_debugging_01
+description: >-
+  hardmode course pd01 deployment — the crawler under test, the wikipedia
+  fixture it depends on, and the metrics sidecar that fronts the crawler.
+  Students install this into their session vcluster (local run), overriding
+  images.problems.crawler with their own build; `hardmode session submit`
+  grades the running deployment.
+type: application
+version: 0.1.0
+appVersion: "v1.1.0"

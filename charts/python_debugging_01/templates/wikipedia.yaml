@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wikipedia
+  labels:
+    {{- include "pd01.labels" . | nindent 4 }}
+    app: wikipedia
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wikipedia
+  template:
+    metadata:
+      labels:
+        app: wikipedia
+    spec:
+      containers:
+        - name: wikipedia
+          image: "{{ .Values.images.fixtures.wikipedia.repository }}:{{ .Values.images.fixtures.wikipedia.tag }}"
+          ports:
+            - name: http
+              containerPort: {{ .Values.wikipedia.port }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wikipedia
+  labels:
+    {{- include "pd01.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: wikipedia
+  ports:
+    - name: http
+      port: {{ .Values.wikipedia.port }}
+      targetPort: http
