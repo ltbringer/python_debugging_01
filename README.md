@@ -46,11 +46,15 @@ your machine passes on the platform.
 
 `hardmode session start python-debugging-01` provisions a Kubernetes **vcluster**
 for you and writes a kubeconfig that points straight at it — no manual vcluster
-install, no port-forwarding:
+install, no port-forwarding. Grab the kubeconfig path and session id from its
+JSON:
 
 ```sh
-export KUBECONFIG="$(hardmode session status --output-json | jq -r .kubeconfig_path)"
-kubectl get nodes              # you have cluster-admin on your own vcluster
+start="$(hardmode session start python-debugging-01 --output-json)"
+export KUBECONFIG="$(echo "$start" | jq -r .kubeconfig)"
+session_id="$(echo "$start" | jq -r .session.id)"
+
+kubectl get nodes              # cluster-admin on your own vcluster
 ```
 
 The vcluster is yours for the life of the session; the platform tears it down
@@ -90,7 +94,7 @@ of the score (see *Resource envelope*).
 When you want a recorded run:
 
 ```sh
-hardmode session submit "$(hardmode session status --output-json | jq -r .id)"
+hardmode session submit "$session_id"
 ```
 
 The platform points its validator at your running deployment, scores it, and
@@ -99,7 +103,7 @@ score.
 
 ### 4. Watch your dashboard
 
-`hardmode session status` gives you a Grafana URL scoped to your session
+`hardmode session status "$session_id"` gives you a Grafana URL scoped to your session
 (request rate, latency p50/p95/p99, error rates, request-vs-response gaps). The
 dashboards show *symptoms*, never bug names — form your hypotheses from the
 curves. The same metrics surface locally via the compose stack (below).
