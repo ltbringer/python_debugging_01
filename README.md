@@ -1,169 +1,205 @@
 # python_debugging_01
 
-A Python web crawler service with several bugs. Your job is to make it correctly handle the workload the validator throws at it, within the resource envelope the platform provisions.
+A Python web crawler service with several planted bugs. Your job is to make it
+correctly handle the workload the validator throws at it, within the resource
+envelope the platform provisions — and to watch your fixes land on a red → amber
+→ green score.
 
-This is the first course on the [hardmode](https://github.com/h4rdm0d3) platform. The service ships as an HTTP server. A private validator hits it, scores your fixes, and shows you a red → amber → green progression.
+This is the first course on the [hardmode](https://github.com/h4rdm0d3) platform.
+The service ships as an HTTP server; a private validator hits it, scores it
+across a few blackbox dimensions, and shows you the result.
+
+---
+
+## How the course works
+
+You don't open a pull request against this repo. The loop is:
+
+1. **Enroll** — `hardmode courses enroll python-debugging-01` forks this repo into
+   your account. That fork is your workspace: your edits, your image, your trail.
+2. **Iterate locally** — run the service with `uv` (or the compose stack) and fix
+   the bugs against the same fixture the grader uses.
+3. **Deploy into your vcluster** — install this repo's Helm chart into a real
+   Kubernetes vcluster you have admin on, running *your* image.
+4. **Submit** — `hardmode session submit <session-id>` grades your running
+   deployment and records the best score on your enrollment.
+
+There is no flakiness budget: the fixture is deterministic, so a passing run on
+your machine passes on the platform.
+
+---
+
+## Prerequisites
+
+- **kubectl** — talk to your vcluster
+- **kubectx** — switch between the session and vcluster contexts without pain
+- **helm** — install the vcluster and this course's chart
+- **uv** — run/iterate the Python service locally
+- a container builder (**docker** or **podman**) + a registry you can push to
+  (e.g. your GHCR) — to get your fixed image into the vcluster
+
+---
+
+## Running on the hardmode platform
+
+### 1. Start your session
+
+`hardmode session start python-debugging-01` provisions a Kubernetes **vcluster**
+for you and writes a kubeconfig that points straight at it — no manual vcluster
+install, no port-forwarding. Grab the kubeconfig path and session id from its
+JSON:
+
+```sh
+start="$(hardmode session start python-debugging-01 --output-json)"
+# printf, not echo — the kubeconfig string contains \n escapes that some
+# shells' echo would expand and break the JSON.
+export KUBECONFIG="$(printf '%s' "$start" | jq -r .kubeconfig)"
+session_id="$(printf '%s' "$start" | jq -r .session.id)"
+
+kubectl get nodes              # cluster-admin on your own vcluster
+```
+
+The vcluster is yours for the life of the session; the platform tears it down
+when the session ends.
+
+### 2. Deploy the course — and your fix
+
+The chart in `charts/python_debugging_01/` is the deployment: your **crawler**,
+the **wikipedia** fixture it depends on, and a **sidecar** that fronts the
+crawler and exports the metrics your dashboard reads.
+
+First deploy as-is (the unfixed reference image — it'll score red):
+
+```sh
+helm install pd01 ./charts/python_debugging_01
+kubectl get pods               # crawler, wikipedia, sidecar
+```
+
+Then the iterate loop — build your fixed image, push it, point the chart at it:
+
+```sh
+docker build -t ghcr.io/<you>/python_debugging_01:dev .
+docker push   ghcr.io/<you>/python_debugging_01:dev
+
+helm upgrade pd01 ./charts/python_debugging_01 \
+  --set images.problems.crawler.repository=ghcr.io/<you>/python_debugging_01 \
+  --set images.problems.crawler.tag=dev
+```
+
+Only `images.problems.crawler` is yours to change — `wikipedia` and `sidecar`
+are author-provided and locked. The crawler runs inside the **200m CPU /
+256Mi** envelope the grader enforces; tuning your deployment's footprint is part
+of the score (see *Resource envelope*).
+
+### 3. Submit for grading
+
+When you want a recorded run:
+
+```sh
+hardmode session submit "$session_id"
+```
+
+The platform points its validator at your running deployment, scores it, and
+records the best result on your enrollment. Re-submitting never lowers your
+score.
+
+### 4. Watch your dashboard
+
+`hardmode session status "$session_id"` gives you a Grafana URL scoped to your session
+(request rate, latency p50/p95/p99, error rates, request-vs-response gaps). The
+dashboards show *symptoms*, never bug names — form your hypotheses from the
+curves. The same metrics surface locally via the compose stack (below).
+
+---
 
 ## The contract
-
-The service exposes:
 
 ### `POST /crawl`
 
 Request:
 ```json
-{ "urls": ["https://example.com/a", "https://example.com/b"], "mode": "batch" }
+{ "urls": ["http://wikipedia:9090/wiki/Asyncio"], "mode": "batch" }
 ```
 
-`mode` is optional.
-
-- `"batch"` (the default) — fetches concurrently and returns once every fetch resolves.
-- `"stream"` — fetches concurrently and returns as soon as the work is dispatched.
-
-Both modes should produce the same eventual result set for the same input.
+`mode` is optional — `"batch"` (default) returns once every fetch resolves;
+`"stream"` returns as soon as the work is dispatched. Both modes must produce
+the same eventual result set for the same input.
 
 Response:
 ```json
 {
-  "results": [
-    { "url": "https://example.com/a", "title": "A", "error": null },
-    { "url": "https://example.com/b", "title": "B", "error": null }
-  ],
-  "stats": { "instance_seen": ["https://example.com/a", "https://example.com/b"] }
+  "results": [{ "url": "...", "title": "Asyncio", "error": null }],
+  "stats": { "instance_seen": ["..."] }
 }
 ```
 
-`stats.instance_seen` reports the URLs handled by the crawler instance that served the request.
+`stats.instance_seen` reports the URLs handled by the instance that served the
+request.
 
 ### `GET /healthz`
 
-Returns `{"ok": true}`. Used by the grader to know the service is up.
+Returns `{"ok": true}` — used by the grader to know the service is up.
+
+---
 
 ## How you're graded
 
-The validator sends one workload to your service inside a constrained resource envelope and scores it across a handful of blackbox dimensions. Either your service meets the SLA bar or it doesn't — there's no per-bug attribution, no checklist of fixes.
+The validator sends one workload inside the constrained envelope and scores it
+across independent, binary dimensions:
 
-**The dimensions** (each independent, each binary):
-
-- **Completeness** — every input URL appears in the response, with `error` populated when applicable.
-- **Dedup** — equivalent URLs collapse to one result; concurrent duplicates produce no extras.
+- **Completeness** — every input URL appears in the response, `error` populated
+  when applicable.
+- **Dedup** — equivalent URLs collapse to one result; concurrent duplicates
+  produce no extras.
 - **Isolation** — per-request state doesn't bleed across requests.
-- **Performance** — the workload finishes inside the wall-clock bar; no batch much slower than the baseline.
-- **Stability** — re-running the workload back-to-back doesn't degrade.
+- **Performance** — the workload finishes inside the wall-clock bar.
+- **Stability** — back-to-back runs don't degrade.
 
-Score is the count of passing dimensions × 20, in `[0, 100]`. Label:
+Score = passing dimensions × 20, in `[0, 100]`. Label: **red** (`< 25`),
+**amber** (`25 ≤ score < 100`), **green** (`100`). You see `{score, label}`
+only — no per-dimension breakdown. The validator deliberately won't tell you
+*what* is failing; that's what the dashboards and your own testing are for.
 
-- **red** — `score < 25`
-- **amber** — `25 ≤ score < 100`
-- **green** — `score == 100`
-
-You see `{score, label}` only. No per-dimension breakdown, no validator-emitted explanations. The validator deliberately doesn't tell you *what* is failing — that's for you to figure out from your service's own behavior (and from the Grafana dashboards the platform exposes; see "Diagnostic surface" below).
+---
 
 ## Resource envelope
 
-The platform runs your service with:
+The platform runs your crawler with **CPU 200m**, **memory 256Mi**, and egress
+restricted to the platform's fixture (no internet at grade time). The dimension
+bars are calibrated for this envelope: within it, an approximately-correct
+service can't meet the performance and stability bars — fixing the bugs is the
+only way through.
 
-- CPU: 200m
-- Memory: 256Mi
-- Network: egress restricted to the platform's fixture (no internet at grade time)
+---
 
-The dimension bars are calibrated for this envelope. Within 200m CPU and 256Mi memory, an approximately-correct service can't meet the performance and stability bars — fixing the bugs is the only way through. Local development runs without caps unless you opt in via the compose; do that before deciding your service is "done."
+## Local development
 
-## Diagnostic surface
+Fastest loop — run the service directly:
 
-The platform attaches an HTTP sidecar to your service and ships per-session Prometheus + Grafana. The dashboards surface request rate, latency p50/p95/p99, error rates, status codes, and request-vs-response count gaps. They do not name bugs; they show symptoms. Form your hypotheses from the curves.
-
-The local compose ships the same stack so you can iterate offline against the same dashboards you'll see during grading.
-
-## Running locally
-
-The repo ships a `compose.yaml` that brings up five services on a shared network:
-
-- `fixture` — Wikipedia-shaped JSON fixture (`ghcr.io/ltbringer/python_debugging_01-fixture`).
-- `crawler` — your service, built from this repo. Capped at CPU 0.2 / mem 256Mi to match the platform's grade-time envelope.
-- `sidecar` — HTTP reverse proxy the platform also runs at grade time; emits Prometheus metrics on every request it forwards. Your crawler doesn't need to implement `/metrics` — the sidecar provides it.
-- `prometheus` — scrapes the sidecar every 5s; UI at <http://localhost:9092>.
-- `grafana` — `Crawler — traffic shape` dashboard pre-provisioned at <http://localhost:3000>. Anonymous Admin in dev, no login.
-
-```bash
-docker compose up --build
-```
-
-`localhost:8080` is the sidecar; it forwards to the crawler internally. Open the dashboard before you start sending traffic, then in another shell POST to the crawler (via the sidecar) with URLs pointing at the fixture's compose-network hostname:
-
-```bash
-curl -sX POST localhost:8080/crawl \
-  -H 'content-type: application/json' \
-  -d '{"urls":[
-    "http://fixture:9090/wiki/Python_(programming_language)",
-    "http://fixture:9090/wiki/Asyncio",
-    "http://fixture:9090/wiki/Global_interpreter_lock"
-  ]}' | jq
-```
-
-`GET http://localhost:9090/catalog` lists the slugs the fixture knows about. `GET /wiki/<slug>` accepts a few query-string overlays for testing specific behaviors — see the fixture's README.
-
-The bugs in this codebase manifest more visibly under the compose's CPU/memory caps than they do in an unconstrained `uv run` loop. If you want a faster iteration cycle, comment out `mem_limit` and `cpus` in `compose.yaml`. Restore them before deciding your service is "done" — the validator's performance bars are calibrated for the constrained envelope.
-
-### Without Docker
-
-```bash
+```sh
 uv sync
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
-The service listens on `:8080`. The crawler is generic — it makes HTTP GETs and treats responses as JSON, so URLs can point at anything that returns JSON (the fixture above, the live Wikipedia REST API, your own mock).
+The crawler makes HTTP GETs and treats responses as JSON, so URLs can point at
+anything that returns JSON (the fixture, the live Wikipedia REST API, your own
+mock).
 
-The happy path works. The defects only manifest under specific conditions. Debug from outcomes: send workloads, compute what the response should be, compare to what came back.
+Full loop with the same observability stack you get on the platform — fixture +
+crawler + sidecar + Prometheus + Grafana:
 
-## Running on the hardmode platform
-
-`hardmode session start python-debugging-01` gives you a kubeconfig scoped to a single host-cluster namespace. The platform's namespace caps fit a vcluster control plane + the M5 fixture / validator / sidecar / Prometheus / Grafana stack with headroom; the per-pod grade-time envelope (200m CPU / 256Mi) is enforced by the vcluster-internal LimitRange the validator sets up at grade time.
-
-Install vcluster with the values file from this repo. It's tuned for hardmode's host namespace (no PVC — sessions are ephemeral — and PodSecurity-restricted-compliant pod specs):
-
-```bash
-export KUBECONFIG=$(hardmode session status --output-json | jq -r .kubeconfig_path)
-NS=$(hardmode session status --output-json | jq -r .namespace)
-
-helm repo add loft-sh https://charts.loft.sh
-helm repo update loft-sh
-
-helm install vc loft-sh/vcluster \
-  --namespace "$NS" \
-  -f vcluster.values.yaml \
-  --wait --timeout 5m
+```sh
+docker compose up --build
+# sidecar (crawler entry) on :8080, Grafana on :3000, Prometheus on :9092
+curl -sX POST localhost:8080/crawl -H 'content-type: application/json' \
+  -d '{"urls":["http://fixture:9090/wiki/Asyncio"]}' | jq
 ```
 
-The values file disables vcluster's persistent volume claim (etcd runs in an emptyDir — sessions live as long as the namespace and no farther), turns off cluster-scoped RBAC (the platform's per-session SA can't create ClusterRoles anyway), pins the control-plane container's resources inside the platform envelope, and sets a non-root pod + container `securityContext` so PSA's `restricted` profile is clean.
+The bugs manifest more visibly under the compose's CPU/memory caps than in an
+unconstrained `uv run` loop. Comment out `mem_limit`/`cpus` in `compose.yaml`
+for a faster cycle, then restore them before judging your own work — the
+validator's bars are calibrated for the constrained envelope.
 
-To talk to the vcluster:
-
-```bash
-# In one terminal, port-forward vcluster's apiserver to your laptop.
-kubectl port-forward -n "$NS" svc/vc 8443:443
-
-# In another:
-kubectl get secret vc-certs -n "$NS" -o jsonpath='{.data.admin\.conf}' \
-  | base64 -d > vcluster.kubeconfig
-sed -i 's|server: https://.*|server: https://127.0.0.1:8443|' vcluster.kubeconfig
-export KUBECONFIG="$PWD/vcluster.kubeconfig"
-kubectl get nodes              # should report the LKE host node
-```
-
-Now you're talking to *your* vcluster apiserver. Deploy the crawler with whatever Deployment / Service shape you prefer (the validator only cares about the SLA endpoints, not Kubernetes object shape).
-
-## Forking and submitting
-
-1. Fork this repo.
-2. Fix the service.
-3. Commit, push, and tag a new semver (`git tag v1.0.1 && git push --tags`). GitHub Actions builds and pushes `ghcr.io/<you>/python_debugging_01:v1.0.1` (public) to GHCR.
-4. From the hardmode CLI:
-   ```bash
-   hardmode session submit
-   ```
-5. Watch the score climb through red → amber → green.
-
-The validator's fixture is deterministic. A passing run on your machine will pass on the platform. There is no flakiness budget.
-
-Good luck.
+The happy path works; the defects only manifest under specific conditions.
+Debug from outcomes: send workloads, compute what the response should be,
+compare to what came back. Good luck.
