@@ -24,6 +24,9 @@ session:
 
 grade_output: progress
 
+observability:
+  dashboard: observability/grafana/sessions-shared.grafanacloud.json
+
 sla:
   service: crawler
   endpoints:

@@ -1,0 +1,194 @@
+{
+  "uid": "hardmode-sessions",
+  "title": "Hardmode — session traffic",
+  "tags": ["hardmode-sessions", "python_debugging_01"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {"from": "now-15m", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "ds",
+        "label": "Datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "hide": 2,
+        "current": {},
+        "options": []
+      },
+      {
+        "name": "namespace",
+        "label": "Session namespace",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${ds}"},
+        "query": "label_values(sidecar_requests_total, namespace)",
+        "refresh": 2,
+        "sort": 1,
+        "current": {},
+        "options": []
+      }
+    ]
+  },
+  "annotations": {"list": []},
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Request rate (by status)",
+      "description": "Requests per second the sidecar proxied, grouped by response status. Spot 5xx spikes here.",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "${ds}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "right", "showLegend": true}},
+      "targets": [
+        {
+          "expr": "sum by(status) (rate(sidecar_requests_total{namespace=\"$namespace\"}[1m]))",
+          "refId": "A",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Latency (p50 / p95 / p99)",
+      "description": "End-to-end request duration as observed at the sidecar.",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "${ds}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 0}
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "right", "showLegend": true}},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by(le) (rate(sidecar_request_duration_seconds_bucket{namespace=\"$namespace\"}[1m])))",
+          "refId": "A",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(sidecar_request_duration_seconds_bucket{namespace=\"$namespace\"}[1m])))",
+          "refId": "B",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by(le) (rate(sidecar_request_duration_seconds_bucket{namespace=\"$namespace\"}[1m])))",
+          "refId": "C",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "In-flight",
+      "description": "Requests currently being proxied. A non-zero floor here while you're idle suggests requests are stuck.",
+      "gridPos": {"x": 0, "y": 8, "w": 6, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "${ds}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 5},
+              {"color": "red", "value": 20}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "graphMode": "area",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {"expr": "sum(sidecar_in_flight_requests{namespace=\"$namespace\"})", "refId": "A"}
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Total requests (cumulative)",
+      "gridPos": {"x": 6, "y": 8, "w": 6, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "${ds}"},
+      "fieldConfig": {
+        "defaults": {"unit": "short", "color": {"mode": "fixed", "fixedColor": "blue"}},
+        "overrides": []
+      },
+      "options": {
+        "graphMode": "none",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {"expr": "sum(sidecar_requests_total{namespace=\"$namespace\"})", "refId": "A"}
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Response body size (p50 / p95)",
+      "description": "Response body bytes. A response that's suspiciously small for a /crawl batch often means the crawler returned an empty results list.",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "${ds}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 0}
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "right", "showLegend": true}},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by(le) (rate(sidecar_response_body_bytes_bucket{namespace=\"$namespace\"}[1m])))",
+          "refId": "A",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(sidecar_response_body_bytes_bucket{namespace=\"$namespace\"}[1m])))",
+          "refId": "B",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Upstream errors",
+      "description": "Errors talking to the crawler — refused (port closed), timeout (handler hung), dns (service name didn't resolve), or other.",
+      "gridPos": {"x": 0, "y": 14, "w": 24, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "${ds}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {"drawStyle": "bars", "lineWidth": 1, "fillOpacity": 50, "stacking": {"mode": "normal"}}
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "right", "showLegend": true}},
+      "targets": [
+        {
+          "expr": "sum by(reason) (rate(sidecar_upstream_errors_total{namespace=\"$namespace\"}[1m]))",
+          "refId": "A",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    }
+  ]
+}
