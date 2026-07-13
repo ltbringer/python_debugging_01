@@ -1,4 +1,5 @@
 import asyncio
+from typing import Optional
 
 import httpx
 
@@ -8,10 +9,10 @@ from .types import Page
 
 
 class Crawler:
-    def __init__(self, headers: dict = {}, seen: list = []):
-        self.headers = headers
+    def __init__(self, headers: Optional[dict] = None, seen: Optional[list] = None):
+        self.headers = headers if headers is not None else {}
         self.headers.setdefault("User-Agent", "python_debugging_01/1.0")
-        self.seen = seen
+        self.seen = seen if seen is not None else []
 
     async def crawl(self, urls: list[str], mode: str = "batch") -> list[Page]:
         self.seen.extend(urls)
