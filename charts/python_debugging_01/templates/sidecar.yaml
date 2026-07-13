@@ -20,6 +20,10 @@ spec:
         # the per-session dashboard. See the platform observability addon.
         k8s.grafana.com/scrape: "true"
         k8s.grafana.com/metrics.portNumber: {{ .Values.sidecar.metricsPort | quote }}
+        # Alloy's default 60s cadence starves rate() windows on the session
+        # dashboard; 15s gives students sub-minute feedback. One pod per
+        # session, so the extra samples are negligible.
+        k8s.grafana.com/metrics.scrapeInterval: {{ .Values.sidecar.scrapeInterval | quote }}
     spec:
       containers:
         - name: sidecar
