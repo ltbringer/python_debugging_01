@@ -43,3 +43,4 @@ wikipedia:
 sidecar:
   port: 8080
   metricsPort: 9091
+  scrapeInterval: 15s

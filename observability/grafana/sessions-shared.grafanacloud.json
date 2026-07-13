@@ -50,7 +50,7 @@
       "options": {"legend": {"displayMode": "table", "placement": "right", "showLegend": true}},
       "targets": [
         {
-          "expr": "sum by(status) (rate(sidecar_requests_total{namespace=\"$namespace\"}[1m]))",
+          "expr": "sum by(status) (rate(sidecar_requests_total{namespace=\"$namespace\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{status}}"
         }
@@ -73,17 +73,17 @@
       "options": {"legend": {"displayMode": "table", "placement": "right", "showLegend": true}},
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by(le) (rate(sidecar_request_duration_seconds_bucket{namespace=\"$namespace\"}[1m])))",
+          "expr": "histogram_quantile(0.5, sum by(le) (rate(sidecar_request_duration_seconds_bucket{namespace=\"$namespace\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "p50"
         },
         {
-          "expr": "histogram_quantile(0.95, sum by(le) (rate(sidecar_request_duration_seconds_bucket{namespace=\"$namespace\"}[1m])))",
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(sidecar_request_duration_seconds_bucket{namespace=\"$namespace\"}[$__rate_interval])))",
           "refId": "B",
           "legendFormat": "p95"
         },
         {
-          "expr": "histogram_quantile(0.99, sum by(le) (rate(sidecar_request_duration_seconds_bucket{namespace=\"$namespace\"}[1m])))",
+          "expr": "histogram_quantile(0.99, sum by(le) (rate(sidecar_request_duration_seconds_bucket{namespace=\"$namespace\"}[$__rate_interval])))",
           "refId": "C",
           "legendFormat": "p99"
         }
@@ -156,12 +156,12 @@
       "options": {"legend": {"displayMode": "table", "placement": "right", "showLegend": true}},
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by(le) (rate(sidecar_response_body_bytes_bucket{namespace=\"$namespace\"}[1m])))",
+          "expr": "histogram_quantile(0.5, sum by(le) (rate(sidecar_response_body_bytes_bucket{namespace=\"$namespace\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "p50"
         },
         {
-          "expr": "histogram_quantile(0.95, sum by(le) (rate(sidecar_response_body_bytes_bucket{namespace=\"$namespace\"}[1m])))",
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(sidecar_response_body_bytes_bucket{namespace=\"$namespace\"}[$__rate_interval])))",
           "refId": "B",
           "legendFormat": "p95"
         }
@@ -184,7 +184,7 @@
       "options": {"legend": {"displayMode": "table", "placement": "right", "showLegend": true}},
       "targets": [
         {
-          "expr": "sum by(reason) (rate(sidecar_upstream_errors_total{namespace=\"$namespace\"}[1m]))",
+          "expr": "sum by(reason) (rate(sidecar_upstream_errors_total{namespace=\"$namespace\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{reason}}"
         }
