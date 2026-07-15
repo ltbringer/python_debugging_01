@@ -6,6 +6,9 @@ images:
     - name: wikipedia
       repository: ghcr.io/ltbringer/python_debugging_01-fixture
       tag: v0.3.0
+      # Listen port — grading (M17) fronts the trusted fixture copy with
+      # a Service on this port and hands the validator its URL.
+      port: 9090
   problems:
     - name: crawler
       repository: ghcr.io/h4rdm0d3/python_debugging_01
@@ -16,7 +19,11 @@ images:
 
 session:
   exposed_services:
-    - name: crawler
+    # The published surface is the metrics sidecar, not the crawler
+    # directly: the validator (M17) and any platform routing enter here,
+    # so graded traffic shows up on the session dashboard. The sidecar
+    # proxies everything to the crawler unchanged.
+    - name: sidecar
       port: 8080
       protocol: http
   idle_timeout_seconds: 600
@@ -28,7 +35,9 @@ observability:
   dashboard: observability/grafana/sessions-shared.grafanacloud.json
 
 sla:
-  service: crawler
+  # The SLA is honored at the published surface (the sidecar proxies
+  # to the crawler unchanged), matching exposed_services above.
+  service: sidecar
   endpoints:
     - method: POST
       path: /crawl
